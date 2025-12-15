@@ -5,10 +5,10 @@ import csv, io
 app = Flask(__name__)
 app.secret_key = "super-secret-key"
 
-# -------- ADMIN --------
+# ---------------- ADMIN CONFIG ----------------
 ADMIN_PASSWORD = "kira"
 
-# -------- EVENT STATE --------
+# ---------------- EVENT STATE ----------------
 EVENT_ACTIVE = False
 EVENT_NAME = ""
 MAX_CAPACITY = 0
@@ -17,7 +17,7 @@ MEMBER_PASSWORD = ""
 TOTAL_COUNT = 0
 LOGS = []
 
-# -------- MEMBER --------
+# ---------------- MEMBER SIDE ----------------
 @app.route("/")
 def home():
     if not EVENT_ACTIVE:
@@ -26,7 +26,8 @@ def home():
 
 @app.route("/member-auth", methods=["POST"])
 def member_auth():
-    if request.form.get("password") == MEMBER_PASSWORD:
+    password = request.form.get("password")
+    if password == MEMBER_PASSWORD:
         session["member_auth"] = True
         return redirect("/member-name")
     return render_template("member_login.html", error="Wrong password")
@@ -46,8 +47,9 @@ def entry():
 
     name = request.form.get("name")
     label = request.form.get("label")
-    members = int(request.form.get("members"))
+    members = int(request.form.get("members"))  # ✅ FIXED COUNT
 
+    # Capacity check
     if TOTAL_COUNT + members > MAX_CAPACITY:
         return render_template("blocked.html", event=EVENT_NAME, max=MAX_CAPACITY)
 
@@ -64,7 +66,7 @@ def entry():
     session.pop("member_auth", None)
     return render_template("success.html")
 
-# -------- ADMIN LOGIN --------
+# ---------------- ADMIN LOGIN ----------------
 @app.route("/admin", methods=["GET", "POST"])
 def admin_login():
     if request.method == "POST":
@@ -74,7 +76,7 @@ def admin_login():
         return render_template("login.html", error="Wrong password")
     return render_template("login.html")
 
-# -------- SETTINGS (NO RESET) --------
+# ---------------- SETTINGS (NO RESET) ----------------
 @app.route("/setup", methods=["GET", "POST"])
 def setup():
     global EVENT_ACTIVE, EVENT_NAME, MAX_CAPACITY, MEMBER_PASSWORD
@@ -87,7 +89,6 @@ def setup():
         MAX_CAPACITY = int(request.form.get("capacity"))
         MEMBER_PASSWORD = request.form.get("member_password")
         EVENT_ACTIVE = True
-
         return redirect("/dashboard")
 
     return render_template(
@@ -97,7 +98,7 @@ def setup():
         member_password=MEMBER_PASSWORD
     )
 
-# -------- DASHBOARD --------
+# ---------------- ADMIN DASHBOARD ----------------
 @app.route("/dashboard")
 def dashboard():
     if not session.get("admin"):
@@ -112,7 +113,7 @@ def dashboard():
         member_password=MEMBER_PASSWORD
     )
 
-# -------- FULL RESET (OPTIONAL) --------
+# ---------------- FULL RESET ----------------
 @app.route("/reset", methods=["POST"])
 def reset():
     global EVENT_ACTIVE, EVENT_NAME, MAX_CAPACITY, MEMBER_PASSWORD, TOTAL_COUNT, LOGS
@@ -126,7 +127,7 @@ def reset():
 
     return redirect("/setup")
 
-# -------- EXPORT --------
+# ---------------- EXPORT CSV ----------------
 @app.route("/export")
 def export():
     if not session.get("admin"):
@@ -134,7 +135,7 @@ def export():
 
     output = io.StringIO()
     writer = csv.writer(output)
-    writer.writerow(["Time", "Name", "Type", "Members", "Total"])
+    writer.writerow(["Time", "Name", "Entry Type", "Members", "Total"])
 
     for l in LOGS:
         writer.writerow([l["time"], l["name"], l["type"], l["members"], l["total"]])
@@ -146,10 +147,12 @@ def export():
         download_name="event_entries.csv"
     )
 
+# ---------------- LOGOUT ----------------
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/admin")
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     app.run(debug=True)
