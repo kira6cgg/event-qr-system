@@ -1,58 +1,91 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Entry Details</title>
+<title>Select Entry</title>
 <meta name="viewport" content="width=device-width, initial-scale=1">
+
 <style>
 body {
     background:#020617;
     color:white;
     font-family:Arial;
-    text-align:center;
-    padding-top:60px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
 }
+
+.card {
+    background:#0f172a;
+    padding:25px;
+    border-radius:18px;
+    width:100%;
+    max-width:360px;
+    text-align:center;
+}
+
 input {
+    width:100%;
     padding:14px;
-    width:80%;
-    max-width:400px;
     border-radius:10px;
     border:none;
+    margin-bottom:16px;
     font-size:16px;
 }
+
 button {
-    width:80%;
-    max-width:400px;
-    padding:16px;
-    margin:10px;
-    font-size:18px;
-    border-radius:14px;
+    width:100%;
+    padding:14px;
+    margin:8px 0;
+    border-radius:12px;
     border:none;
+    font-size:16px;
     font-weight:bold;
+    cursor:pointer;
 }
-.green { background:#22c55e; }
-.blue { background:#38bdf8; }
-.yellow { background:#facc15; }
+
+.b2 { background:#22c55e; }
+.b3 { background:#38bdf8; }
+.b4 { background:#facc15; color:black; }
+.b1 { background:#a855f7; }
+
 </style>
 </head>
+
 <body>
 
-<h2>Enter Family / Member Name</h2>
+<div class="card">
+<h2>{{ event }}</h2>
 
 <form method="post" action="/entry">
-<input type="text" name="name" placeholder="Family Name" required><br><br>
+<input name="name" placeholder="Enter your name" required>
 
-<button class="green" name="label" value="2 Parents">
-<input type="hidden" name="members" value="2">👨‍👩 2 Parents</button>
+<button class="b2" name="label" value="2 Parents" onclick="setMembers(2)">
+2 Parents
+</button>
 
-<button class="green" name="label" value="2 Parents + 1 Sibling">
-<input type="hidden" name="members" value="3">👨‍👩‍👦 2 Parents + 1 Sibling</button>
+<button class="b3" name="label" value="2 Parents + 1 Sibling" onclick="setMembers(3)">
+2 Parents + 1 Sibling
+</button>
 
-<button class="blue" name="label" value="2 Parents + 2 Siblings">
-<input type="hidden" name="members" value="4">👨‍👩‍👧‍👦 2 Parents + 2 Siblings</button>
+<button class="b4" name="label" value="2 Parents + 2 Siblings" onclick="setMembers(4)">
+2 Parents + 2 Siblings
+</button>
 
-<button class="yellow" name="label" value="1 Parent">
-<input type="hidden" name="members" value="1">👨 1 Parent</button>
+<button class="b1" name="label" value="1 Parent" onclick="setMembers(1)">
+1 Parent
+</button>
+
+<input type="hidden" name="members" id="members">
+
 </form>
+</div>
+
+<script>
+function setMembers(n) {
+    document.getElementById("members").value = n;
+}
+</script>
 
 </body>
 </html>
