@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Edit Event Settings</title>
+<style>
+body {
+    background:#020617;
+    color:white;
+    font-family:Arial;
+    text-align:center;
+    padding-top:80px;
+}
+input, button {
+    padding:14px;
+    width:80%;
+    max-width:400px;
+    margin:10px;
+    font-size:16px;
+    border-radius:10px;
+    border:none;
+}
+button {
+    background:#22c55e;
+    font-weight:bold;
+}
+</style>
+</head>
+<body>
+
+<h1>⚙️ Event Settings</h1>
+
+<form method="post">
+<input name="event" placeholder="Event Name" value="{{ event }}" required>
+<input type="number" name="capacity" placeholder="Max Capacity" value="{{ capacity }}" required>
+<input name="member_password" placeholder="Member Entry Password" value="{{ member_password }}" required>
+<button>Save Changes</button>
+</form>
+
+</body>
+</html>

@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Admin Dashboard</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta http-equiv="refresh" content="5">
+
+<style>
+body {
+    background:#020617;
+    color:white;
+    font-family:Arial, sans-serif;
+    padding:20px;
+}
+
+.header {
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    flex-wrap:wrap;
+}
+
+h1 {
+    margin:0;
+    color:#22c55e;
+}
+
+.stats {
+    margin:20px 0;
+    font-size:20px;
+}
+
+.stats span {
+    font-size:34px;
+    font-weight:bold;
+    color:#38bdf8;
+}
+
+.controls {
+    margin:20px 0;
+}
+
+.controls a,
+.controls button {
+    display:inline-block;
+    margin:6px;
+    padding:12px 18px;
+    border-radius:10px;
+    border:none;
+    font-size:14px;
+    font-weight:bold;
+    cursor:pointer;
+    text-decoration:none;
+}
+
+.settings {
+    background:#facc15;
+    color:black;
+}
+
+.export {
+    background:#38bdf8;
+    color:black;
+}
+
+.reset {
+    background:#dc2626;
+    color:white;
+}
+
+.logout {
+    background:#64748b;
+    color:white;
+}
+
+table {
+    width:100%;
+    border-collapse:collapse;
+    margin-top:20px;
+}
+
+th, td {
+    padding:12px;
+    border-bottom:1px solid #334155;
+    text-align:center;
+}
+
+th {
+    background:#0f172a;
+}
+
+tr:hover {
+    background:#020617;
+}
+
+.footer-note {
+    margin-top:30px;
+    font-size:14px;
+    color:#94a3b8;
+}
+</style>
+</head>
+
+<body>
+
+<div class="header">
+    <h1>📊 {{ event }}</h1>
+    <div>🔐 Member Password: <b>{{ member_password }}</b></div>
+</div>
+
+<div class="stats">
+    Total Entered: <span>{{ total }}</span> / {{ max }}
+</div>
+
+<div class="controls">
+    <a href="/setup" class="settings">⚙️ Edit Settings</a>
+    <a href="/export" class="export">📁 Export CSV</a>
+
+    <form method="post" action="/reset" style="display:inline;">
+        <button class="reset">♻️ Full Reset</button>
+    </form>
+
+    <a href="/logout" class="logout">🚪 Logout</a>
+</div>
+
+<table>
+    <tr>
+        <th>Time</th>
+        <th>Name</th>
+        <th>Entry Type</th>
+        <th>Members</th>
+        <th>Total</th>
+    </tr>
+
+    {% for l in logs %}
+    <tr>
+        <td>{{ l.time }}</td>
+        <td>{{ l.name }}</td>
+        <td>{{ l.type }}</td>
+        <td>{{ l.members }}</td>
+        <td>{{ l.total }}</td>
+    </tr>
+    {% endfor %}
+</table>
+
+<div class="footer-note">
+    Auto-refresh every 5 seconds • Do not refresh manually during peak entry
+</div>
+
+</body>
+</html>

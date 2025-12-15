@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>Entry Access</title>
+<style>
+body {
+    background:#020617;
+    color:white;
+    font-family:Arial;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    height:100vh;
+}
+.card {
+    background:#0f172a;
+    padding:30px;
+    border-radius:16px;
+    width:320px;
+    text-align:center;
+}
+input, button {
+    width:100%;
+    padding:14px;
+    margin-top:12px;
+    border-radius:10px;
+    border:none;
+}
+button {
+    background:#22c55e;
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+<h2>🔐 Entry Password</h2>
+
+<form method="post" action="/member-auth">
+<input type="password" name="password" placeholder="Enter password" required>
+<button>Continue</button>
+</form>
+
+{% if error %}
+<p style="color:red">{{ error }}</p>
+{% endif %}
+</div>
+
+</body>
+</html>
