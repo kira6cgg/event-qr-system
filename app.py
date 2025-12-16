@@ -1,14 +1,18 @@
 from flask import Flask, render_template, request, redirect, session, send_file
 from datetime import datetime
 import psycopg2, os, csv, io
+import pytz
 
+# ---------------- APP CONFIG ----------------
 app = Flask(__name__)
 app.secret_key = "super-secret-key"
 
 ADMIN_PASSWORD = "kira"
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
-# ---------------- DB CONNECTION ----------------
+IST = pytz.timezone("Asia/Kolkata")
+
+# ---------------- DATABASE ----------------
 def get_db():
     return psycopg2.connect(DATABASE_URL)
 
@@ -49,7 +53,9 @@ init_db()
 def get_event():
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT active, name, capacity, member_password, total FROM event LIMIT 1;")
+            cur.execute(
+                "SELECT active, name, capacity, member_password, total FROM event LIMIT 1;"
+            )
             return cur.fetchone()
 
 def update_event(**kwargs):
@@ -60,7 +66,7 @@ def update_event(**kwargs):
             cur.execute(f"UPDATE event SET {fields};", values)
         conn.commit()
 
-# ---------------- MEMBER ----------------
+# ---------------- MEMBER ROUTES ----------------
 @app.route("/")
 def home():
     active, name, capacity, member_password, total = get_event()
@@ -73,20 +79,20 @@ def member_auth():
     password = request.form.get("password")
     active, name, capacity, member_password, total = get_event()
     if password == member_password:
-        session["member_auth"] = True
+        session["member"] = True
         return redirect("/member-name")
     return render_template("member_login.html", error="Wrong password")
 
 @app.route("/member-name")
 def member_name():
-    if not session.get("member_auth"):
+    if not session.get("member"):
         return redirect("/")
-    _, name, _, _, _ = get_event()
+    active, name, capacity, member_password, total = get_event()
     return render_template("member_name.html", event=name)
 
 @app.route("/entry", methods=["POST"])
 def entry():
-    if not session.get("member_auth"):
+    if not session.get("member"):
         return redirect("/")
 
     name = request.form.get("name")
@@ -100,21 +106,26 @@ def entry():
 
     new_total = total + members
 
+    # ✅ FINAL TIME FORMAT (IST + seconds + day)
+    entry_time = datetime.now(pytz.utc).astimezone(IST).strftime(
+        "%I:%M:%S %p · %A"
+    )
+
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO logs (time, name, type, members, total) VALUES (%s,%s,%s,%s,%s);",
-                (datetime.now().strftime("%H:%M:%S"), name, label, members, new_total)
+                (entry_time, name, label, members, new_total)
             )
             cur.execute("UPDATE event SET total=%s;", (new_total,))
         conn.commit()
 
-    session.pop("member_auth", None)
+    session.pop("member", None)
     return render_template("success.html")
 
-# ---------------- ADMIN ----------------
+# ---------------- ADMIN ROUTES ----------------
 @app.route("/admin", methods=["GET", "POST"])
-def admin_login():
+def admin():
     if request.method == "POST":
         if request.form.get("password") == ADMIN_PASSWORD:
             session["admin"] = True
@@ -148,9 +159,17 @@ def dashboard():
 
     with get_db() as conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT time, name, type, members, total FROM logs ORDER BY id DESC;")
+            cur.execute(
+                "SELECT time, name, type, members, total FROM logs ORDER BY id DESC;"
+            )
             logs = [
-                {"time": r[0], "name": r[1], "type": r[2], "members": r[3], "total": r[4]}
+                {
+                    "time": r[0],
+                    "name": r[1],
+                    "type": r[2],
+                    "members": r[3],
+                    "total": r[4],
+                }
                 for r in cur.fetchall()
             ]
 
@@ -171,10 +190,9 @@ def reset():
     with get_db() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM logs;")
-            cur.execute("""
-                UPDATE event
-                SET active=FALSE, name='', capacity=0, member_password='', total=0;
-            """)
+            cur.execute(
+                "UPDATE event SET active=FALSE, name='', capacity=0, member_password='', total=0;"
+            )
         conn.commit()
 
     return redirect("/setup")
@@ -207,5 +225,6 @@ def logout():
     session.clear()
     return redirect("/admin")
 
+# ---------------- RUN ----------------
 if __name__ == "__main__":
     app.run(debug=True)
