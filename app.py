@@ -65,7 +65,6 @@ def get_event():
     conn = get_db()
     if not conn:
         return False, "", 0, "", 0
-
     try:
         with conn:
             with conn.cursor() as cur:
@@ -74,7 +73,6 @@ def get_event():
                 )
                 return cur.fetchone()
     except:
-        # Tables missing → create them
         if init_db():
             return get_event()
         return False, "", 0, "", 0
@@ -118,15 +116,11 @@ def entry():
     if not session.get("member"):
         return redirect("/")
 
-    name = request.form.get("name")
-    label = request.form.get("label")
-    members = int(request.form.get("members"))
-
     active, event_name, capacity, mp, total = get_event()
-    if total + members > capacity:
+    if total + int(request.form.get("members")) > capacity:
         return render_template("blocked.html", event=event_name, max=capacity)
 
-    new_total = total + members
+    new_total = total + int(request.form.get("members"))
     entry_time = datetime.now(pytz.utc).astimezone(IST).strftime("%I:%M:%S %p · %A")
 
     conn = get_db()
@@ -134,7 +128,13 @@ def entry():
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO logs (time, name, type, members, total) VALUES (%s,%s,%s,%s,%s);",
-                (entry_time, name, label, members, new_total)
+                (
+                    entry_time,
+                    request.form.get("name"),
+                    request.form.get("label"),
+                    int(request.form.get("members")),
+                    new_total,
+                ),
             )
             cur.execute("UPDATE event SET total=%s;", (new_total,))
 
@@ -156,25 +156,39 @@ def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
 
-    active, name, capacity, mp, total = get_event()
+    try:
+        active, name, capacity, mp, total = get_event()
+        conn = get_db()
+        if not conn:
+            return "System starting… refresh in 10 seconds."
 
-    conn = get_db()
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("SELECT time, name, type, members, total FROM logs ORDER BY id DESC;")
-            logs = [
-                {"time": r[0], "name": r[1], "type": r[2], "members": r[3], "total": r[4]}
-                for r in cur.fetchall()
-            ]
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT time, name, type, members, total FROM logs ORDER BY id DESC;"
+                )
+                logs = [
+                    {
+                        "time": r[0],
+                        "name": r[1],
+                        "type": r[2],
+                        "members": r[3],
+                        "total": r[4],
+                    }
+                    for r in cur.fetchall()
+                ]
 
-    return render_template(
-        "admin.html",
-        event=name,
-        total=total,
-        max=capacity,
-        logs=logs,
-        member_password=mp
-    )
+        return render_template(
+            "admin.html",
+            event=name,
+            total=total,
+            max=capacity,
+            logs=logs,
+            member_password=mp,
+        )
+    except Exception as e:
+        print("Dashboard error:", e)
+        return "System initializing. Refresh after 10 seconds."
 
 @app.route("/export")
 def export():
@@ -196,7 +210,7 @@ def export():
         io.BytesIO(output.getvalue().encode()),
         mimetype="text/csv",
         as_attachment=True,
-        download_name="event_entries.csv"
+        download_name="event_entries.csv",
     )
 
 @app.route("/logout")
