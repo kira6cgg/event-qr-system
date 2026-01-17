@@ -25,53 +25,59 @@ def get_db():
 def init_db():
     conn = get_db()
     if not conn:
-        return
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS event (
-                    id SERIAL PRIMARY KEY,
-                    active BOOLEAN,
-                    name TEXT,
-                    capacity INTEGER,
-                    member_password TEXT,
-                    total INTEGER
-                );
-            """)
-            cur.execute("""
-                CREATE TABLE IF NOT EXISTS logs (
-                    id SERIAL PRIMARY KEY,
-                    time TEXT,
-                    name TEXT,
-                    type TEXT,
-                    members INTEGER,
-                    total INTEGER
-                );
-            """)
-            cur.execute("SELECT COUNT(*) FROM event;")
-            if cur.fetchone()[0] == 0:
+        return False
+    try:
+        with conn:
+            with conn.cursor() as cur:
                 cur.execute("""
-                    INSERT INTO event (active, name, capacity, member_password, total)
-                    VALUES (FALSE, '', 0, '', 0);
+                    CREATE TABLE IF NOT EXISTS event (
+                        id SERIAL PRIMARY KEY,
+                        active BOOLEAN,
+                        name TEXT,
+                        capacity INTEGER,
+                        member_password TEXT,
+                        total INTEGER
+                    );
                 """)
-
-# 🔒 DO NOT CRASH ON STARTUP
-try:
-    init_db()
-except Exception as e:
-    print("Init skipped:", e)
+                cur.execute("""
+                    CREATE TABLE IF NOT EXISTS logs (
+                        id SERIAL PRIMARY KEY,
+                        time TEXT,
+                        name TEXT,
+                        type TEXT,
+                        members INTEGER,
+                        total INTEGER
+                    );
+                """)
+                cur.execute("SELECT COUNT(*) FROM event;")
+                if cur.fetchone()[0] == 0:
+                    cur.execute("""
+                        INSERT INTO event (active, name, capacity, member_password, total)
+                        VALUES (FALSE, '', 0, '', 0);
+                    """)
+        return True
+    except Exception as e:
+        print("Init DB error:", e)
+        return False
 
 # ---------------- HELPERS ----------------
 def get_event():
     conn = get_db()
     if not conn:
         return False, "", 0, "", 0
-    with conn:
-        with conn.cursor() as cur:
-            cur.execute(
-                "SELECT active, name, capacity, member_password, total FROM event LIMIT 1;"
-            )
-            return cur.fetchone()
+
+    try:
+        with conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT active, name, capacity, member_password, total FROM event LIMIT 1;"
+                )
+                return cur.fetchone()
+    except:
+        # Tables missing → create them
+        if init_db():
+            return get_event()
+        return False, "", 0, "", 0
 
 def update_event(**kwargs):
     conn = get_db()
@@ -112,10 +118,6 @@ def entry():
     if not session.get("member"):
         return redirect("/")
 
-    conn = get_db()
-    if not conn:
-        return "System temporarily unavailable. Please try again.", 503
-
     name = request.form.get("name")
     label = request.form.get("label")
     members = int(request.form.get("members"))
@@ -127,6 +129,7 @@ def entry():
     new_total = total + members
     entry_time = datetime.now(pytz.utc).astimezone(IST).strftime("%I:%M:%S %p · %A")
 
+    conn = get_db()
     with conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -148,33 +151,14 @@ def admin():
         return render_template("login.html", error="Wrong password")
     return render_template("login.html")
 
-@app.route("/setup", methods=["GET", "POST"])
-def setup():
-    if not session.get("admin"):
-        return redirect("/admin")
-
-    if request.method == "POST":
-        update_event(
-            active=True,
-            name=request.form.get("event"),
-            capacity=int(request.form.get("capacity")),
-            member_password=request.form.get("member_password")
-        )
-        return redirect("/dashboard")
-
-    active, name, capacity, mp, total = get_event()
-    return render_template("setup.html", event=name, capacity=capacity, member_password=mp)
-
 @app.route("/dashboard")
 def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
 
-    conn = get_db()
-    if not conn:
-        return "Database unavailable", 503
-
     active, name, capacity, mp, total = get_event()
+
+    conn = get_db()
     with conn:
         with conn.cursor() as cur:
             cur.execute("SELECT time, name, type, members, total FROM logs ORDER BY id DESC;")
@@ -198,9 +182,6 @@ def export():
         return redirect("/admin")
 
     conn = get_db()
-    if not conn:
-        return "Database unavailable", 503
-
     with conn:
         with conn.cursor() as cur:
             cur.execute("SELECT time, name, type, members, total FROM logs;")
