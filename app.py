@@ -5,19 +5,28 @@ import pytz
 
 # ---------------- APP CONFIG ----------------
 app = Flask(__name__)
-app.secret_key = "super-secret-key"
+app.secret_key = os.environ.get("SECRET_KEY", "temporary-secret")
 
-ADMIN_PASSWORD = "kira"
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "kira")
 DATABASE_URL = os.environ.get("DATABASE_URL")
 
 IST = pytz.timezone("Asia/Kolkata")
 
 # ---------------- DATABASE ----------------
 def get_db():
-    return psycopg2.connect(DATABASE_URL)
+    if not DATABASE_URL:
+        return None
+    try:
+        return psycopg2.connect(DATABASE_URL)
+    except Exception as e:
+        print("DB connection failed:", e)
+        return None
 
 def init_db():
-    with get_db() as conn:
+    conn = get_db()
+    if not conn:
+        return
+    with conn:
         with conn.cursor() as cur:
             cur.execute("""
                 CREATE TABLE IF NOT EXISTS event (
@@ -45,13 +54,19 @@ def init_db():
                     INSERT INTO event (active, name, capacity, member_password, total)
                     VALUES (FALSE, '', 0, '', 0);
                 """)
-        conn.commit()
 
-init_db()
+# 🔒 DO NOT CRASH ON STARTUP
+try:
+    init_db()
+except Exception as e:
+    print("Init skipped:", e)
 
 # ---------------- HELPERS ----------------
 def get_event():
-    with get_db() as conn:
+    conn = get_db()
+    if not conn:
+        return False, "", 0, "", 0
+    with conn:
         with conn.cursor() as cur:
             cur.execute(
                 "SELECT active, name, capacity, member_password, total FROM event LIMIT 1;"
@@ -59,12 +74,14 @@ def get_event():
             return cur.fetchone()
 
 def update_event(**kwargs):
+    conn = get_db()
+    if not conn:
+        return
     fields = ", ".join(f"{k}=%s" for k in kwargs)
     values = list(kwargs.values())
-    with get_db() as conn:
+    with conn:
         with conn.cursor() as cur:
             cur.execute(f"UPDATE event SET {fields};", values)
-        conn.commit()
 
 # ---------------- MEMBER ROUTES ----------------
 @app.route("/")
@@ -95,30 +112,28 @@ def entry():
     if not session.get("member"):
         return redirect("/")
 
+    conn = get_db()
+    if not conn:
+        return "System temporarily unavailable. Please try again.", 503
+
     name = request.form.get("name")
     label = request.form.get("label")
     members = int(request.form.get("members"))
 
     active, event_name, capacity, mp, total = get_event()
-
     if total + members > capacity:
         return render_template("blocked.html", event=event_name, max=capacity)
 
     new_total = total + members
+    entry_time = datetime.now(pytz.utc).astimezone(IST).strftime("%I:%M:%S %p · %A")
 
-    # ✅ FINAL TIME FORMAT (IST + seconds + day)
-    entry_time = datetime.now(pytz.utc).astimezone(IST).strftime(
-        "%I:%M:%S %p · %A"
-    )
-
-    with get_db() as conn:
+    with conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO logs (time, name, type, members, total) VALUES (%s,%s,%s,%s,%s);",
                 (entry_time, name, label, members, new_total)
             )
             cur.execute("UPDATE event SET total=%s;", (new_total,))
-        conn.commit()
 
     session.pop("member", None)
     return render_template("success.html")
@@ -155,21 +170,16 @@ def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
 
-    active, name, capacity, mp, total = get_event()
+    conn = get_db()
+    if not conn:
+        return "Database unavailable", 503
 
-    with get_db() as conn:
+    active, name, capacity, mp, total = get_event()
+    with conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT time, name, type, members, total FROM logs ORDER BY id DESC;"
-            )
+            cur.execute("SELECT time, name, type, members, total FROM logs ORDER BY id DESC;")
             logs = [
-                {
-                    "time": r[0],
-                    "name": r[1],
-                    "type": r[2],
-                    "members": r[3],
-                    "total": r[4],
-                }
+                {"time": r[0], "name": r[1], "type": r[2], "members": r[3], "total": r[4]}
                 for r in cur.fetchall()
             ]
 
@@ -182,27 +192,16 @@ def dashboard():
         member_password=mp
     )
 
-@app.route("/reset", methods=["POST"])
-def reset():
-    if not session.get("admin"):
-        return redirect("/admin")
-
-    with get_db() as conn:
-        with conn.cursor() as cur:
-            cur.execute("DELETE FROM logs;")
-            cur.execute(
-                "UPDATE event SET active=FALSE, name='', capacity=0, member_password='', total=0;"
-            )
-        conn.commit()
-
-    return redirect("/setup")
-
 @app.route("/export")
 def export():
     if not session.get("admin"):
         return redirect("/admin")
 
-    with get_db() as conn:
+    conn = get_db()
+    if not conn:
+        return "Database unavailable", 503
+
+    with conn:
         with conn.cursor() as cur:
             cur.execute("SELECT time, name, type, members, total FROM logs;")
             rows = cur.fetchall()
@@ -210,8 +209,7 @@ def export():
     output = io.StringIO()
     writer = csv.writer(output)
     writer.writerow(["Time", "Name", "Type", "Members", "Total"])
-    for r in rows:
-        writer.writerow(r)
+    writer.writerows(rows)
 
     return send_file(
         io.BytesIO(output.getvalue().encode()),
@@ -227,4 +225,4 @@ def logout():
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
-    app.run(debug=True)
+    app.run()
