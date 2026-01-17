@@ -17,21 +17,15 @@ def get_db():
     if not DATABASE_URL:
         return None
     try:
-        return psycopg2.connect(
-            DATABASE_URL,
-            sslmode="require"   # 🔥 FORCE SSL, NO GUESSING
-        )
+        return psycopg2.connect(DATABASE_URL)
     except Exception as e:
         print("DB connection failed:", e)
         return None
 
-
 def init_db():
     conn = get_db()
     if not conn:
-        print("DB not reachable during init")
         return False
-
     try:
         with conn:
             with conn.cursor() as cur:
@@ -61,26 +55,19 @@ def init_db():
                         INSERT INTO event (active, name, capacity, member_password, total)
                         VALUES (FALSE, '', 0, '', 0);
                     """)
-        print("DB initialized successfully")
         return True
-
     except Exception as e:
         print("Init DB error:", e)
         return False
 
+# Initialize DB once
+init_db()
 
-# 🔐 RUN DB INIT ONCE (NO LOOPS)
-DB_READY = init_db()
-
-
+# ---------------- HELPERS ----------------
 def get_event():
-    if not DB_READY:
-        return False, "", 0, "", 0
-
     conn = get_db()
     if not conn:
         return False, "", 0, "", 0
-
     try:
         with conn:
             with conn.cursor() as cur:
@@ -92,21 +79,15 @@ def get_event():
         print("get_event error:", e)
         return False, "", 0, "", 0
 
-
 def update_event(**kwargs):
-    if not DB_READY:
-        return
     conn = get_db()
     if not conn:
         return
-
     fields = ", ".join(f"{k}=%s" for k in kwargs)
     values = list(kwargs.values())
-
     with conn:
         with conn.cursor() as cur:
             cur.execute(f"UPDATE event SET {fields};", values)
-
 
 # ---------------- MEMBER ROUTES ----------------
 @app.route("/")
@@ -115,7 +96,6 @@ def home():
     if not active:
         return render_template("no_event.html")
     return render_template("member_login.html")
-
 
 @app.route("/member-auth", methods=["POST"])
 def member_auth():
@@ -126,7 +106,6 @@ def member_auth():
         return redirect("/member-name")
     return render_template("member_login.html", error="Wrong password")
 
-
 @app.route("/member-name")
 def member_name():
     if not session.get("member"):
@@ -134,39 +113,36 @@ def member_name():
     active, name, capacity, member_password, total = get_event()
     return render_template("member_name.html", event=name)
 
-
 @app.route("/entry", methods=["POST"])
 def entry():
     if not session.get("member"):
         return redirect("/")
 
-    active, event_name, capacity, mp, total = get_event()
+    name = request.form.get("name")
+    label = request.form.get("label")
     members = int(request.form.get("members"))
+
+    active, event_name, capacity, mp, total = get_event()
 
     if total + members > capacity:
         return render_template("blocked.html", event=event_name, max=capacity)
 
     new_total = total + members
-    entry_time = datetime.now(pytz.utc).astimezone(IST).strftime("%I:%M:%S %p · %A")
+    entry_time = datetime.now(pytz.utc).astimezone(IST).strftime(
+        "%I:%M:%S %p · %A"
+    )
 
     conn = get_db()
     with conn:
         with conn.cursor() as cur:
             cur.execute(
                 "INSERT INTO logs (time, name, type, members, total) VALUES (%s,%s,%s,%s,%s);",
-                (
-                    entry_time,
-                    request.form.get("name"),
-                    request.form.get("label"),
-                    members,
-                    new_total,
-                ),
+                (entry_time, name, label, members, new_total)
             )
             cur.execute("UPDATE event SET total=%s;", (new_total,))
 
     session.pop("member", None)
     return render_template("success.html")
-
 
 # ---------------- ADMIN ROUTES ----------------
 @app.route("/admin", methods=["GET", "POST"])
@@ -178,21 +154,19 @@ def admin():
         return render_template("login.html", error="Wrong password")
     return render_template("login.html")
 
-
 @app.route("/dashboard")
 def dashboard():
     if not session.get("admin"):
         return redirect("/admin")
-
-    if not DB_READY:
-        return "Database not ready. Check DATABASE_URL.", 500
 
     active, name, capacity, mp, total = get_event()
 
     conn = get_db()
     with conn:
         with conn.cursor() as cur:
-            cur.execute("SELECT time, name, type, members, total FROM logs ORDER BY id DESC;")
+            cur.execute(
+                "SELECT time, name, type, members, total FROM logs ORDER BY id DESC;"
+            )
             logs = [
                 {
                     "time": r[0],
@@ -210,9 +184,45 @@ def dashboard():
         total=total,
         max=capacity,
         logs=logs,
-        member_password=mp,
+        member_password=mp
     )
 
+@app.route("/setup", methods=["GET", "POST"])
+def setup():
+    if not session.get("admin"):
+        return redirect("/admin")
+
+    if request.method == "POST":
+        update_event(
+            active=True,
+            name=request.form.get("event"),
+            capacity=int(request.form.get("capacity")),
+            member_password=request.form.get("member_password"),
+        )
+        return redirect("/dashboard")
+
+    active, name, capacity, mp, total = get_event()
+    return render_template(
+        "setup.html",
+        event=name,
+        capacity=capacity,
+        member_password=mp
+    )
+
+@app.route("/reset", methods=["POST"])
+def reset():
+    if not session.get("admin"):
+        return redirect("/admin")
+
+    conn = get_db()
+    with conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM logs;")
+            cur.execute(
+                "UPDATE event SET active=FALSE, name='', capacity=0, member_password='', total=0;"
+            )
+
+    return redirect("/setup")
 
 @app.route("/export")
 def export():
@@ -234,15 +244,13 @@ def export():
         io.BytesIO(output.getvalue().encode()),
         mimetype="text/csv",
         as_attachment=True,
-        download_name="event_entries.csv",
+        download_name="event_entries.csv"
     )
-
 
 @app.route("/logout")
 def logout():
     session.clear()
     return redirect("/admin")
-
 
 # ---------------- RUN ----------------
 if __name__ == "__main__":
